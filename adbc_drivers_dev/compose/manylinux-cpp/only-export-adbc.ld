@@ -1,4 +1,4 @@
-# Copyright (c) 2025 ADBC Drivers Contributors
+# Copyright (c) 2026 ADBC Drivers Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-GO=1.26.4
-LIBCLANG=18.1.1
-MANYLINUX=manylinux2014
-RUST=1.93.1
-VCPKG_REVISION=e0b785fa42e9b3ee27f62e54f65e41358a1d2671
-VCPKG_SHALLOW_SINCE=2026-05-14
+{
+  global:
+    Adbc*;
+
+  local:
+    *;
+};
