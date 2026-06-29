@@ -261,15 +261,12 @@ def target_platform() -> str:
         return PLATFORM
     target = target.replace("/", "-")
     platform_name, _, _ = target.partition("-")
-    match platform_name:
-        case "darwin" | "mac" | "macos":
-            return "macos"
-        case "linux":
-            return "linux"
-        case "windows" | "win":
-            return "windows"
-        case _:
-            raise ValueError(f"Unsupported TARGET={target!r}")
+    if platform_name != "linux":
+        raise ValueError(
+            "Cross-compilation only supports Linux targets. "
+            f"Got: {platform_name!r}. Use TARGET=linux, TARGET=linux-amd64, or TARGET=linux-arm64"
+        )
+    return platform_name
 
 
 def target_architecture() -> str:
@@ -301,17 +298,27 @@ def should_use_docker() -> bool:
     explicit = get_var("USE_DOCKER", "").strip()
     if explicit:
         return to_bool(explicit)
-    if get_var("TARGET", "").strip():
-        return target_platform() == "linux" and not to_bool(get_var("DEBUG", "False"))
-    return (
-        to_bool(get_var("CI", False))
-        and platform.system() == "Linux"
-        and not to_bool(get_var("DEBUG", "False"))
-    )
+
+    if to_bool(get_var("DEBUG", "False")):
+        return False
+
+    # Cross-compile to Linux: use Docker
+    if get_var("TARGET", "").strip() and target_platform() == "linux":
+        return True
+
+    # CI on Linux: use Docker (original behavior)
+    return to_bool(get_var("CI", False)) and platform.system() == "Linux"
 
 
 def docker_platform() -> str:
     return f"{target_platform()}/{target_architecture()}"
+
+
+def docker_env(repo_root: Path) -> dict[str, str]:
+    return {
+        "SOURCE_ROOT": str(repo_root),
+        "DOCKER_DEFAULT_PLATFORM": docker_platform(),
+    }
 
 
 def maybe_build_docker(
@@ -367,6 +374,36 @@ def maybe_build_docker(
         ]
     )
     check_call(command, cwd=Path(__file__).parent, env=env)
+
+
+def read_linux_symbols(binary: Path) -> list[str]:
+    return check_output(
+        [
+            "nm",
+            "--demangle",
+            "--dynamic",
+            str(binary),
+        ]
+    ).splitlines()
+
+
+def read_linux_symbols_in_docker(repo_root: Path, binary: Path) -> list[str]:
+    rel_binary = binary.resolve().relative_to(repo_root.resolve())
+    return check_output(
+        [
+            "docker",
+            "compose",
+            "run",
+            "--rm",
+            "manylinux",
+            "nm",
+            "--demangle",
+            "--dynamic",
+            f"/source/{rel_binary.as_posix()}",
+        ],
+        cwd=Path(__file__).parent,
+        env=docker_env(repo_root),
+    ).splitlines()
 
 
 def build_go(
@@ -603,15 +640,10 @@ def build_script(
 
 
 def check_linux(binary: Path) -> None:
-    symbols = check_output(
-        [
-            "nm",
-            "--demangle",
-            "--dynamic",
-            str(binary),
-        ]
-    ).splitlines()
+    check_linux_symbols(read_linux_symbols(binary), binary)
 
+
+def check_linux_symbols(symbols: list[str], binary: Path) -> None:
     # Make sure only 'Adbc*' symbols are exported
     bad_symbols = []
     for symbol in symbols:
@@ -675,7 +707,14 @@ def check_macos(binary: Path) -> None:
 def check(binary: Path) -> None:
     if target_platform() == "linux":
         if platform.system() != "Linux":
-            info("Skipping Linux compatibility checks on non-Linux host")
+            if should_use_docker():
+                repo_root = Path(".").resolve()
+                check_linux_symbols(
+                    read_linux_symbols_in_docker(repo_root, binary),
+                    binary,
+                )
+            else:
+                info("Skipping Linux compatibility checks on non-Linux host (no Docker)")
             return
         check_linux(binary)
     elif target_platform() == "macos":
@@ -731,11 +770,17 @@ def task_build():
 
     targets = [repo_root / "build" / target]
 
-    return {
+    result = {
         "actions": actions,
         "file_dep": [str(p) for p in file_deps],
         "targets": targets,
     }
+
+    # Force rebuild when cross-compiling (don't use doit cache)
+    if get_var("TARGET", "").strip():
+        result["uptodate"] = [False]
+
+    return result
 
 
 def task_check():
