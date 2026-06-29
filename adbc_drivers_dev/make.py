@@ -29,18 +29,32 @@ from pathlib import Path
 import doit
 import packaging.version
 
-match platform.system():
-    case "Darwin":
-        EXT = "dylib"
-        PLATFORM = "macos"
-    case "Linux":
-        EXT = "so"
-        PLATFORM = "linux"
-    case "Windows":
-        EXT = "dll"
-        PLATFORM = "windows"
-    case _:
-        raise RuntimeError(f"Unsupported platform: {platform.system()}")
+HOST_PLATFORM_NAMES = {
+    "Darwin": "macos",
+    "Linux": "linux",
+    "Windows": "windows",
+}
+
+PLATFORM_EXTENSIONS = {
+    "macos": "dylib",
+    "linux": "so",
+    "windows": "dll",
+}
+
+ARCH_ALIASES = {
+    "amd64": "amd64",
+    "x86_64": "amd64",
+    "x64": "amd64",
+    "aarch64": "arm64",
+    "arm64": "arm64",
+    "arm64v8": "arm64",
+}
+
+HOST_SYSTEM = platform.system()
+try:
+    PLATFORM = HOST_PLATFORM_NAMES[HOST_SYSTEM]
+except KeyError as err:
+    raise RuntimeError(f"Unsupported platform: {HOST_SYSTEM}") from err
 
 
 DOIT_CONFIG = {
@@ -73,30 +87,11 @@ def append_flags(env: dict[str, str], var: str, flags: str) -> None:
         env[var] = flags
 
 
-def architecture() -> str:
-    match platform.machine():
-        case "AMD64":
-            return "amd64"
-        case "aarch64":
-            return "arm64"
-        case "arm64":
-            return "arm64"
-        case "arm64v8":
-            return "arm64"
-        case "x86_64":
-            return "amd64"
-        case _:
-            raise ValueError(f"{platform.machine()} is not a recognized architecture")
-
-
 def normalize_arch(value: str) -> str:
-    match value.lower():
-        case "amd64" | "x86_64" | "x64":
-            return "amd64"
-        case "aarch64" | "arm64" | "arm64v8":
-            return "arm64"
-        case _:
-            raise ValueError(f"{value} is not a recognized architecture")
+    try:
+        return ARCH_ALIASES[value.lower()]
+    except KeyError as err:
+        raise ValueError(f"{value} is not a recognized architecture") from err
 
 
 def _check_call(f, *args, **kwargs) -> str:
@@ -272,26 +267,21 @@ def target_platform() -> str:
 def target_architecture() -> str:
     target = get_var("TARGET", "").strip().lower()
     if not target:
-        return architecture()
+        return normalize_arch(platform.machine())
     target = target.replace("/", "-")
     _, sep, arch = target.partition("-")
     if not sep:
         if target_platform() == "linux":
             return "amd64"
-        return architecture()
+        return normalize_arch(platform.machine())
     return normalize_arch(arch)
 
 
 def target_extension() -> str:
-    match target_platform():
-        case "macos":
-            return "dylib"
-        case "linux":
-            return "so"
-        case "windows":
-            return "dll"
-        case _:
-            raise ValueError(f"Unsupported target platform: {target_platform()}")
+    try:
+        return PLATFORM_EXTENSIONS[target_platform()]
+    except KeyError as err:
+        raise ValueError(f"Unsupported target platform: {target_platform()}") from err
 
 
 def should_use_docker() -> bool:
