@@ -295,16 +295,27 @@ def target_extension() -> str:
 
 
 def should_use_docker() -> bool:
+    target = get_var("TARGET", "").strip()
     explicit = get_var("USE_DOCKER", "").strip()
+
+    if target:
+        if explicit and not to_bool(explicit):
+            raise ValueError(
+                "Linux cross-compilation requires Docker; USE_DOCKER=false is not supported with TARGET=linux*"
+            )
+        return target_platform() == "linux"
+
     if explicit:
-        return to_bool(explicit)
+        if to_bool(explicit):
+            if platform.system() != "Linux":
+                raise ValueError(
+                    "USE_DOCKER=true without TARGET is only supported on Linux hosts"
+                )
+            return True
+        return False
 
     if to_bool(get_var("DEBUG", "False")):
         return False
-
-    # Cross-compile to Linux: use Docker
-    if get_var("TARGET", "").strip() and target_platform() == "linux":
-        return True
 
     # CI on Linux: use Docker (original behavior)
     return to_bool(get_var("CI", False)) and platform.system() == "Linux"
@@ -714,7 +725,9 @@ def check(binary: Path) -> None:
                     binary,
                 )
             else:
-                info("Skipping Linux compatibility checks on non-Linux host (no Docker)")
+                info(
+                    "Skipping Linux compatibility checks on non-Linux host (no Docker)"
+                )
             return
         check_linux(binary)
     elif target_platform() == "macos":
@@ -778,7 +791,7 @@ def task_build():
 
     # Force rebuild when cross-compiling (don't use doit cache)
     if get_var("TARGET", "").strip():
-        result["uptodate"] = [False]
+        result["uptodate"] = [False]  # codespell:ignore uptodate
 
     return result
 
