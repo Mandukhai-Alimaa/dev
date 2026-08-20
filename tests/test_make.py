@@ -207,9 +207,16 @@ def test_go_linux_amd64(go_driver_root: tuple[Path, Path]) -> None:
         driver_root=driver_root,
         version="0.1.0",
     )
-    make_config = MakeConfig(
-        driver="godummy",
-        lang=LangGo(lang="go", go_mod_path="module", build_tags=["custom_feature"]),
+    make_config = MakeConfig.model_validate(
+        {
+            "driver": "godummy",
+            "lang": {
+                "lang": "go",
+                "go-mod-path": "module",
+                "build-tags": ["custom_feature"],
+                "release-build-tags": ["release_feature"],
+            },
+        }
     )
 
     plan = make_config.build_plan(config)
@@ -221,7 +228,7 @@ def test_go_linux_amd64(go_driver_root: tuple[Path, Path]) -> None:
             "module",
             "build",
             "-buildmode=c-shared",
-            "-tags=driverlib,custom_feature",
+            "-tags=driverlib,custom_feature,release_feature",
             "-ldflags=-w -X github.com/adbc-drivers/driverbase-go/driverbase.infoDriverVersion=0.1.0",
             "-o",
             "build/libadbc_driver_godummy.so",

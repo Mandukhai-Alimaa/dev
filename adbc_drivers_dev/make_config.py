@@ -287,6 +287,9 @@ class LangGo(BaseModel):
 
     lang: typing.Literal["go"]
     build_tags: list[str] = Field(default_factory=list, alias="build-tags")
+    release_build_tags: list[str] = Field(
+        default_factory=list, alias="release-build-tags"
+    )
     go_mod_path: str | None = Field(default=None, alias="go-mod-path")
 
 
@@ -376,6 +379,8 @@ class MakeConfig(BaseModel):
             if config.debug:
                 tags.append("assert")
             tags.extend(self.lang.build_tags)
+            if not config.debug:
+                tags.extend(self.lang.release_build_tags)
 
             go = ["go"]
             if self.lang.go_mod_path:
