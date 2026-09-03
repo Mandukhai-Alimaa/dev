@@ -269,13 +269,16 @@ def _extract_exported_windows_symbols(symbols: list[str]) -> list[str]:
 
 
 def check_required_symbols(
-    exported_symbols: list[str], binary: Path, driver: str
+    make_config: MakeConfig, exported_symbols: list[str], binary: Path, driver: str
 ) -> None:
     """Check that required symbols are present in exported symbols."""
     driver_name = "".join(part.capitalize() for part in driver.lower().split("-"))
-    driver_init = f"AdbcDriver{driver_name}Init"
     missing_symbols = set()
-    for required_symbol in (driver_init, "AdbcDriverInit"):
+    required_symbols = ["AdbcDriverInit"]
+    if not make_config.checks.disable_driver_entrypoint_check:
+        required_symbols.append(f"AdbcDriver{driver_name}Init")
+
+    for required_symbol in required_symbols:
         if required_symbol not in exported_symbols:
             missing_symbols.add(required_symbol)
     if missing_symbols:
@@ -335,7 +338,7 @@ def _check_linux(make_env: MakeEnv, make_config: MakeConfig, binary: Path) -> No
             "Cannot run Linux compatibility checks on non-Linux host without Docker"
         )
     exported_symbols = _extract_exported_linux_symbols(symbols)
-    check_required_symbols(exported_symbols, binary, make_config.driver)
+    check_required_symbols(make_config, exported_symbols, binary, make_config.driver)
     check_disallowed_symbols(exported_symbols, binary, make_config.driver)
     check_linux_libc_requirement(symbols, make_config.manylinux)
     try:
@@ -380,7 +383,7 @@ def _check_macos(make_config: MakeConfig, binary: Path) -> None:
     symbols = _read_macos_symbols(binary)
     dependencies = _read_macos_dependencies(binary)
     exported_symbols = _extract_exported_macos_symbols(symbols)
-    check_required_symbols(exported_symbols, binary, make_config.driver)
+    check_required_symbols(make_config, exported_symbols, binary, make_config.driver)
     check_disallowed_symbols(exported_symbols, binary, make_config.driver)
     _check_macos_deployment_target(binary)
     allowed_dependencies = _MACOS_RUNTIME_DEPENDENCIES | set(
@@ -397,7 +400,7 @@ def _check_windows(make_config: MakeConfig, binary: Path) -> None:
     symbols = _read_windows_symbols(binary)
     dependencies = _read_windows_dependencies(binary)
     exported_symbols = _extract_exported_windows_symbols(symbols)
-    check_required_symbols(exported_symbols, binary, make_config.driver)
+    check_required_symbols(make_config, exported_symbols, binary, make_config.driver)
     allowed_dependencies = _WINDOWS_RUNTIME_DEPENDENCIES | {
         dependency.upper()
         for dependency in make_config.additional_runtime_dependencies.get("windows", [])
