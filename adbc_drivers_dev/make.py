@@ -229,7 +229,9 @@ def detect_version(
                         )
                     )
             rev = check_output(["git", "rev-parse", "--short", "HEAD"], cwd=repo_root)
-            version += f"-dev.{count}.{rev}"
+            # Prefix the revision so an all-numeric hash with a leading zero is
+            # not interpreted as an invalid numeric SemVer identifier.
+            version += f"-dev.{count}.g{rev}"
 
     # Append -dirty if there are uncommitted changes
     dirty = check_output(["git", "status", "--porcelain"], cwd=repo_root).splitlines()

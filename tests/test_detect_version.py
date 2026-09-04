@@ -80,7 +80,7 @@ def test_after_tag(repo):
         cwd=repo,
     )
     version = detect_version(repo)
-    assert version.startswith("v1.2.3-dev.1."), version
+    assert version.startswith("v1.2.3-dev.1.g"), version
 
 
 def test_after_tag_subdir(repo):
